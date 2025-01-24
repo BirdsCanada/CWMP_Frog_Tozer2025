@@ -1,0 +1,530 @@
+---
+title: "02-DataManip"
+format: html
+editor: visual
+editor_options: 
+  chunk_output_type: console
+---
+
+## Load Directories and Libraries
+
+```{r load}
+
+library(tidyverse)
+library(reshape)
+library(INLA)
+library(corrplot)
+#library(rgdal)
+library(sf)
+library(ggmap)
+library(leaflet)
+library(mapview)
+library(rnaturalearth)
+
+library("ggmap") 
+register_stadiamaps("1cdeb586-3f5a-4ef9-813b-02375efa9f21")
+
+
+# Create folders as necessary
+if(!dir.exists("Data")) dir.create("Data")
+if(!dir.exists("Output")) dir.create("Output")
+
+out.dir <- paste("Output/")
+dat.dir <- paste("Data/")
+```
+
+What we will want to load into RStudio is the raw data, which you can save in `.csv` format and in the `Data` directory in this R Project folder. If you need to update this analysis, simply save a new copy of the raw data with the same file names in the `Data` folder.
+
+## Load response data and join tables
+
+```{r data}
+
+#Load data
+bpoint<-read.csv("Data/CWMP_anuran_point.csv")
+bobs<-read.csv("Data/CWMP_anuran_obs.csv")
+site<-read.csv("Data/cwmp_master_site_table_sept2023.csv") #inlcude basin
+
+#change site to site_id 
+site<-site %>% mutate(site_id=site) %>% select(-site)
+
+#Join tables 
+frog_dat<-NULL
+frog_dat<-left_join(bobs, bpoint, by=c("site_id", "crew_name", "date", "year", "sample", "point_id", "qa_done", "quar_flag", "longitude", "latitude", "coord_qual", "comments"))
+
+```
+
+Take a tour of the data to learn about its characteristics. Derive some summary stats to help you understand the data structure.
+
+## Data exploration
+
+```{r datatour}
+
+#How many year has each sites been run? #How many points per site? 
+sites<-frog_dat %>% group_by(site_id) %>% dplyr::summarize(siteyr=n_distinct(year), npoint=n_distinct(point_id)) 
+
+mean(sites$siteyr) #2.
+range(sites$siteyr) #1-11
+mean(sites$npoint) #2.58
+range(sites$npoint) #1-17
+
+hist(sites$siteyr) #There are a lot of sites that have only been run once or twice
+hist(sites$npoint)
+
+#How many unique lat longs per points? 
+latlong<-frog_dat %>% group_by(site_id, point_id) %>% dplyr::summarize(nlat=n_distinct(latitude), nlong=n_distinct(longitude), nyear=n_distinct(year))
+
+#How may missing lat longs?
+miss_ll<-frog_dat %>% group_by(site_id, point_id) %>% filter(is.na(latitude)) #2005 missing lat and long. Will want to rectify this issue. 
+
+#Did you want to consider an observer effect?
+length(unique(frog_dat$observer)) # 101 unique observers
+obs<-frog_dat %>% group_by(observer) %>% dplyr::summarize(obsyr=n_distinct(year))
+hist(obs$obsyr) #there are a lot of first year observers
+
+#Do some observers survey multiple sites? 
+length(unique(frog_dat$site_id)) # 747 unique sites
+obs2<-frog_dat %>% group_by(observer) %>% dplyr::summarize(obssite=n_distinct(site_id))
+hist(obs2$obssite)#there are a lot of observers that survey multiple sites. Likely because they are paid employees and not volunteers.
+
+```
+
+What this summary tells me is that a lat and long are not unique to the point_id within a site. It appears that a surveyor takes a new lat and long each year which is less efficient than working from fixed point count locations. We will need to assign a single lat&long per site_id (or point_id) for the analysis. Doug shared the master site list, which should have unique lat and long for each site ID.
+
+There are a lot of observers that survey multiple point per year, but there are also a lot of observers that only survey for one year. We may consider including an `observer-site` random effect in the model. We might also want to have a first-year observer effect if we anticipate that first year observers are less proficient. Recall that surveyors and trained professionals and must pass a test to participate in the survey, so observer effects may be negligable.
+
+## Data cleaning
+
+There is a modifier `M` on some of the point_ids. Doug suggest these are site who's locations needed to be modified slightly within a given year. I will remove the modifier assuming they are close enough.
+
+```{r mdrop}
+
+frog_dat<-frog_dat %>% mutate(point=ifelse(point_id=="1M", "1", ifelse(point_id=="2M", "2", ifelse(point_id=="3M", "3", ifelse(point_id=="4M", "4", ifelse(point_id=="5M", "5", ifelse(point_id=="6M", "6", ifelse(point_id=="8M", "8", ifelse(point_id=="1MA", "1", point_id))))))))) %>% select(-point_id) 
+
+frog_dat<-frog_dat %>% dplyr::rename(point_id=point)
+
+```
+
+Site 5755 is missing lat and longs. There doesn't appear to be any in the database for any year. Doug confirmed that this is a data entry error and they site should be 5735.
+
+```{r sitefix}
+
+frog_dat<-frog_dat %>% mutate(site_id=ifelse(site_id=="5755", "5735", site_id))
+
+```
+
+Now join to the master site file.
+
+```{r masterjoin}
+
+frog_dat<-frog_dat %>% select(-latitude, -longitude)
+
+frog_dat$site_id<-as.integer(frog_dat$site_id)
+
+frog_dat<-left_join(frog_dat, site, by=c("site_id"))
+
+#recode the St. Lawrence sites as Ontario otherwise lake level will not align
+frog_dat$basin[frog_dat$basin=="St. Lawrence"] <- "Ontario" 
+
+
+```
+
+## Sites surveyed per year summary
+
+```{r sitesurvey}
+
+site_sum<-frog_dat %>% select(site_id, year) %>% distinct() %>% mutate(value="x")
+site_sum<-cast(site_sum, site_id~year, value="value")
+nyear<-frog_dat %>% group_by(site_id) %>% summarise(nyears=n_distinct(year))
+site_sum<-left_join(site_sum, nyear, by="site_id")
+write.csv(site_sum, "Output/Summary_SiteSumYear.csv", row.names = FALSE)
+
+```
+
+## Point surveyed per year summary
+
+```{r sitesurvey}
+
+point_sum<-frog_dat %>% select(site_id, sample, year, basin) %>% distinct() %>% mutate(point=paste(site_id, sample, sep="-")) %>% select(-site_id, -sample)
+
+point_sum_all <- point_sum %>% group_by(year) %>% summarise(n=length(point)) 
+mean(point_sum_all$n)  #437.8462
+
+point_sum_all <- point_sum %>% group_by(year) %>% summarise(n=length(point)) 
+mean(point_sum_all$n)  #437.8462
+range(point_sum_all$n) #331 507
+
+
+point_sum_basin <- point_sum %>% group_by(year, basin) %>% summarise(n=length(point)) 
+point_sum_basin <- point_sum_basin %>% group_by(basin) %>% summarise(mean = mean(n), min = min(n), max = max(n))
+
+```
+
+## Types of sites surveyed per year (i.e., class)
+
+```{r siteclass}
+
+site_class<-frog_dat %>% group_by(class, year) %>% summarise(nsites=n_distinct(site_id))
+site_class<-cast(site_class, class~year, value="nsites")
+write.csv(site_class, "Output/Summary_ClassYear.csv", row.names=FALSE)
+
+```
+
+There seems to be good sample sized for each class type in each year.
+
+## Raw species counts
+
+```{r sp counts}
+
+sp<-frog_dat %>% group_by(year, taxa_code) %>% summarize(sample_size=length(date))
+sp<-cast(sp, year~taxa_code)
+
+write.csv(sp, "Output/Summary_SpeciesYear.csv", row.names=FALSE)
+
+```
+
+## Assign each site to a BCR or Region
+
+At first we were assigning each sample point to a BCR-Basin intersect to assign out of range, but then Doug created a unique puzzle to do this more accurately. The shape file is saved in the `Data` folder called `puzzelPieces.shp` but the near assignment was done in ArcGIS because some of the sample points fall outside the bounds of the .shp file. The old BCR code is still currently retained but could be deleted if found to be obsolete.
+
+```{r region}
+
+#read region file 
+region<-read.csv("Data/rangematrix.csv")
+region<-region %>% dplyr::rename(site_id=site, region=label2)
+frog_dat<-left_join(frog_dat, region, by=c("site_id"))
+
+```
+
+## Types of sites surveyed per year (i.e., class)
+
+```{r siteclass}
+
+site_basin<-frog_dat %>% group_by(basin, year) %>% summarise(nsites=n_distinct(site_id))
+site_basin<-cast(site_basin, basin~year, value="nsites") %>% na.omit()
+
+write.csv(site_basin, "Output/Summary_BasinYear.csv")
+
+```
+
+There seems to be good sample sized for each class type in each year.
+
+## Plot route locations and number of years surveyed
+
+```{r plot}
+
+#Plot data point locations
+plot_data<-frog_dat %>% group_by(site_id, lat, lon) %>% dplyr::summarize(siteyr=n_distinct(year)) 
+
+#Create spatial data
+plot <- frog_dat %>% select("lon", "lat")%>% distinct()
+plot_sf <- st_as_sf(plot, coords = c("lon", "lat"), crs = 4326)
+
+#Create the base layer map
+map <- get_stadiamap(bbox = as.numeric(st_bbox(plot_sf)), zoom = 5)
+
+#Create a new plot for each year
+plot<-ggmap(map) + 
+  geom_point(data = plot_data, aes(x = lon, y = lat, size=siteyr, colour=siteyr))
+print(plot)
+
+```
+
+## Create column for raw occurance and an events matrix
+
+```{r occurance}
+
+frog_dat<-frog_dat %>% mutate(occ = ifelse(taxa_code=="(none)", 0, 1))
+
+#site level zero-fill
+events<-NULL
+events<-frog_dat %>% select(site_id, point_id, year, lat, lon, class, basin, region, areaHa) %>% distinct(site_id, point_id, year, .keep_all = TRUE)
+
+#Special events matrix to properly zero fill the occupancy frame. Notice this is nearly twice as long as the first events layer, which is expected. 
+events2<-NULL
+events2<-frog_dat %>% select(site_id, point_id, sample, year, region) %>% distinct()
+
+```
+
+## Load covariate data to be added to events matrix
+
+```{r cov data}
+
+Dcov<-read.csv("Data/DynamicCovs.csv") #dynamic
+Scov<-read.csv("Data/StaticCovs.csv") #static
+lakel<-read.csv("Data/Lakelevel.csv") #lake level
+
+```
+
+## Detrend lake level since it is correlated with year
+
+```{r lakelevel}
+
+#create output table only need to run once
+#detrend<- as.data.frame(matrix(data = NA, nrow = 1, ncol = 4, byrow = FALSE, dimnames = NULL))
+#names(detrend) <- c("lake", "year", "detrend.lk", "scale.lk")
+#write.table(detrend, file = paste(dat.dir,"CWMP_detrend_lake.csv", sep=""), row.names = FALSE, #append = FALSE, quote = FALSE, sep = ",")
+
+#Get the average summer lake level (May-July) 
+#lakel<-lakel %>% mutate(lakelevel = (may+jun+jul)/3)
+
+#Let's detrend the Lakelevel variable
+
+#lake.list<-unique(lakel$lake)
+
+#for(m in 1:length(lake.list)){
+  
+#m<-1 #for testing the loop
+  
+#lk.data<-NULL #clear old data frame
+#lk.data<-lakel %>% filter(lake==lake.list[m])
+
+#trend<-lm(lakelevel~year, data=lk.data)
+#lk.data$predict<-predict(trend)
+#lk.data$detrend.lk<-lk.data$lakelevel-lk.data$predict
+#lk.data <- lk.data %>% select(lake, year, detrend.lk)
+#lk.data$scale.lk<-scale(lk.data$detrend.lk, scale=TRUE, center=TRUE)
+
+#write.table(lk.data, file = paste(dat.dir,"CWMP_detrend_lake.csv", sep=""), row.names = FALSE, append = TRUE, col.names=FALSE, quote = FALSE, sep = ",")  
+
+#} #end loop
+
+laked<-read.csv("Data/CWMP_detrend_lake.csv")  #manual edit to separate Hur-Mich
+laked<-na.omit(laked)
+
+#test plot
+ggplot(laked, aes(x=year, y=scale.lk, colour=basin))+
+  geom_line(size=2)+
+  theme_classic()+
+  xlab("Year")+
+  ylab("Mean lake level May-July (scaled per lake)")
+
+#merge with events
+
+events<-left_join(events, laked, by=c("basin", "year"))
+
+```
+
+## Explore Static Covariates
+
+```{r static}
+
+Scov<-Scov %>% mutate(point=ifelse(point_id=="1M", "0", ifelse(point_id=="2M", "0", ifelse(point_id=="3M", "0", ifelse(point_id=="4M", "0", ifelse(point_id=="5M", "0", ifelse(point_id=="6M", "0", ifelse(point_id=="8M", "0", ifelse(point_id=="1MA", "0", point_id))))))))) %>% select(-point_id) 
+
+Scov<-Scov %>% filter(point>0) #remove as they create duplicates in the data
+
+Scov<-Scov %>% dplyr::rename(point_id=point)
+
+#Are predictors correlated, removed correlations
+cor.m<-Scov %>% select(percfor2500m, percWet2500m, percWet250m, percAgWatershed, percUrbWatershed, kmsRoadsPerHa2500m) %>% na.omit() %>% distinct()
+cor(cor.m)
+#cor with p-vlue
+library(Hmisc)
+rcorr(as.matrix(cor.m))
+
+Scov<-Scov %>% select(site_id, point_id, percfor2500m, percWet2500m, percWet250m, percAgWatershed, percUrbWatershed, kmsRoadsPerHa2500m)
+
+#merge with events layer
+events<- left_join(events, Scov, by=c("site_id", "point_id"), relationship = "many-to-many")
+
+#Explore variability in static covariates 
+
+pred.mean<- events %>% group_by(basin) %>% summarise(PercentAgricultural = mean(percAgWatershed, na.rm=TRUE), PercentUrban=mean(percUrbWatershed, na.rm=TRUE), PercentWetland=mean(percWet2500m, na.rm=TRUE), WetSize =mean(percWet250m, na.rm=TRUE), PercentRoad = mean(kmsRoadsPerHa2500m, na.rm=TRUE), PercentForest = mean(percfor2500m, na.rm=TRUE))
+pred.mean<-gather(pred.mean, key="predictor", value="mean", 2:6)
+
+pred.sd<-events %>% group_by(basin) %>% summarise(SDAgricultural = sd(percAgWatershed, na.rm=TRUE), SDUrban=sd(percUrbWatershed, na.rm=TRUE), SDWetland=sd(percWet2500m, na.rm=TRUE), SDWetSize =sd(percWet250m, na.rm=TRUE), SDRoad = sd(kmsRoadsPerHa2500m, na.rm=TRUE), SDForest = sd(percfor2500m, na.rm=TRUE))
+pred.sd<-gather(pred.sd, key="predictor", value="sd", 2:6)
+pred.sd<-pred.sd %>% select(-basin, -predictor)
+
+pred<-cbind(pred.mean, pred.sd)
+pred<-na.omit(pred)
+
+ggplot(pred, aes(x=basin, y=mean, col=basin))+
+  geom_point()+
+  geom_errorbar((aes(ymin=mean-sd, ymax=mean+sd, width=.6)))+
+  facet_wrap(~predictor, scales="free")+
+  theme_classic()+
+  theme(axis.title.x=element_blank(), axis.text.x=element_blank())+
+  theme(text=element_text(size=15))+
+  scale_color_manual(values = c("blue", "orange", "red", "purple", "black"))
+
+```
+
+## Explore Dynamic covariate (including detrended water level)
+
+```{r dynamic}
+
+Dcov<-Dcov %>% mutate(point=ifelse(point_id=="1M", "0", ifelse(point_id=="2M", "0", ifelse(point_id=="3M", "3", ifelse(point_id=="4M", "0", ifelse(point_id=="5M", "0", ifelse(point_id=="6M", "6", ifelse(point_id=="8M", "0", ifelse(point_id=="1MA", "0", point_id))))))))) %>% select(-point_id) 
+
+Dcov<-Dcov %>% filter(point>0)
+
+Dcov<-Dcov %>% dplyr::rename(point_id=point)
+
+#Are predictors correlated, removed correlations
+#cor.m<-Dcov %>% select(wqIndex, cond, totP, solReacP, ammoniaN, totN, nitrateN) %>% na.omit() %>% distinct()
+#cor(cor.m)
+##cor with p-vlue
+#library(Hmisc)
+#rcorr(as.matrix(cor.m))
+
+Dcov<-Dcov %>% select(site_id, point_id, crew_name, year, solReacP, nitrateN, ammoniaN, cond)
+
+#Account for detection limit using the Rossate Stone
+#detlim<-read.csv("Data/detection_ limit.csv")
+#detlim<-detlim %>% select(-analyzed_by, -unit) 
+#detlim<- cast(detlim, crew_name + year~analyte, value="det_limit")
+#Dcov<-left_join(Dcov, detlim, by=c("crew_name", "year"))
+
+#if value is below the detection limit, then multiple it by 0.5
+#Dcov<-Dcov %>% mutate(nitrateN = ifelse(nitrateN <= `Nitrate-N`, nitrateN*0.5, nitrateN), solReacP = ifelse(solReacP <= SRP , #solReacP*0.5, solReacP), ammoniaN = ifelse(ammoniaN<=`Ammonium-N`, ammoniaN*0.5, ammoniaN))
+#Dcov<-Dcov %>% select(site_id, point_id, crew_name, year, solReacP, nitrateN, ammoniaN, cond)
+
+#merge with events
+events<-left_join(events, Dcov, by=c("site_id", "point_id", "year"), relationship = "many-to-many")
+
+#Explore variability in dynamic covariates 
+
+pred.mean2<- events %>% group_by(basin, year) %>% summarise(LakeLevel=mean(scale.lk, na.rm=TRUE), P= mean(solReacP, na.rm=TRUE), N=mean(nitrateN, na.rm=TRUE), ammonian =mean(ammoniaN, na.rm=TRUE), cond = mean(cond, na.rm=TRUE))
+pred.mean2<-gather(pred.mean2, key="predictor", value="mean", 3:7)
+
+pred.sd2<-events %>% group_by(basin, year) %>% summarise(LakeLevelsd=sd(scale.lk, na.rm=TRUE), Psd= sd(solReacP, na.rm=TRUE), Nsdsd=sd(nitrateN, na.rm=TRUE), ammoniansd =sd(ammoniaN, na.rm=TRUE), condsd = sd(cond, na.rm=TRUE))
+pred.sd2<-gather(pred.sd2, key="predictor", value="sd", 3:7)
+
+pred.sd2<-pred.sd2 %>% ungroup() %>% select(-basin, -year, -predictor)
+
+pred2<-cbind(pred.mean2, pred.sd2)
+pred2<-na.omit(pred2)
+
+ggplot(pred2, aes(x=year, y=mean, col=basin))+
+  geom_line()+
+  geom_errorbar((aes(ymin=mean-sd, ymax=mean+sd, width=.6)))+
+  facet_wrap(~predictor, scales="free")+
+  theme_classic()+
+  #theme(axis.title.x=element_blank(), axis.text.x=element_blank())+
+  theme(text=element_text(size=15))+
+  scale_color_manual(values = c("blue", "orange", "red", "purple", "black"))#
+
+
+```
+
+## Select final events data
+
+```{r events2}
+
+events<-events %>% select(site_id, point_id, year, lat, lon, class, basin, region, scale.lk, percfor2500m, percWet2500m, percWet250m, percAgWatershed, percUrbWatershed, kmsRoadsPerHa2500m, solReacP, nitrateN, ammoniaN, cond)
+
+```
+
+## Create the speices list
+
+```{r splist}
+
+#Combine Eastern and Cope's Gray Tree Frog = TRFR
+#Combine Boreal and Western Chorus Frog = CHFR
+frog_dat<-frog_dat %>% mutate(ssp=ifelse(taxa_code %in% c("GRTR", "CGTR"), "TRFR", ifelse(taxa_code %in% c("CHFR", "BCFR"), "CHFR", taxa_code)))
+
+#Remove Mink, Pickerel and Folwers Toad
+frog_dat<- subset(frog_dat, !(taxa_code %in% c("MIFR", "PIFR", "FOTO", "(none)"))) 
+sp.list<-unique(frog_dat$ssp)
+
+```
+
+## Species raw occupancy
+
+Here we explore the raw occupancy based on basin. This is raw occupancy based on three visits per site.
+
+```{r spsum}
+
+#create dataframes and tables outside loop
+
+master_basin<-NULL
+master_basin<-events %>% select(region) %>% distinct() %>% na.omit()
+
+
+for(n in 1:length(sp.list)){
+  
+#n<-1 #for testing the loop
+  
+  sp.data<-NULL #clear old data frame
+  sp.data<-frog_dat %>% filter(ssp==sp.list[n])
+  sp<-unique(sp.data$ssp)
+  
+#Retain only needed data
+sp.data<-sp.data %>% select(occ, site_id, point_id, sample, year, lat, lon, class, region, areaHa) %>% group_by(site_id, point_id, sample, year, class, region) %>% dplyr::summarise(count=sum(occ)) %>% distinct()
+  
+#Merge with events layer to zero-fill
+sp.data<-left_join(events2, sp.data, by=c("site_id", "point_id", "sample", "year", "region"))
+  
+#Zero fill the 'count' column
+  sp.data$count[is.na(sp.data$count)] <- 0 
+  sp.data$ssp<- sp.list[n]
+  
+#Let's summarize raw occupancy per region (this looks at each site-year combination to determine if it was occupied at least once). This dataframe may be most useful for establishing range. 
+  sp.occ<-NULL
+  sp.occ<-sp.data %>% group_by(year, site_id, region) %>% dplyr::summarize(sptot=sum(count)) %>%  mutate(occ=ifelse(sptot>=1, 1, 0))
+  sp.occ<-sp.occ %>% group_by(region) %>% dplyr::summarize(tot=length(occ), raw=sum(occ), per_occ=(raw/tot)*100) %>% select(-tot, -raw)
+
+colnames(sp.occ)[colnames(sp.occ) == "per_occ"] <- sp
+master_basin<-left_join(master_basin, sp.occ, by="region")
+
+}# end species loop
+
+write.csv(master_basin, "Output/OccupancyPerRegion_full.csv", row.names = FALSE)
+
+```
+
+## Max occupancy per survey point
+
+Creates the `CWMP_MaxOcc.csv` used for the analysis, which is a zero-filled data matrix.
+
+```{r range}
+
+#Create table outside the species loop
+maxcount<- as.data.frame(matrix(data = NA, nrow = 1, ncol = 22, byrow = FALSE, dimnames = NULL))
+names(maxcount) <- c("site_id", "point_id", "year", "lat", "long", "class", "basin", "region", "scale.lake", "per_forest", "per_wetlg", "per_wetsm", "per_agri", "per_urban", "Roadkm", "SolReacP", "nitrateN", "ammoniaN", "cond", "maxocc", "maxcode", "taxa_code")
+write.table(maxcount, file = paste(out.dir,"CWMP_MaxOcc.csv", sep=""), row.names = FALSE, append = FALSE, quote = FALSE, sep = ",")
+
+#Read back in the master_basin file to assing range  
+master_basin<-read.csv("Output/OccupancyPerRegion_full.csv")
+
+for(n in 1:length(sp.list)){
+  
+#n<-1 #for testing the loop
+  
+  sp.data<-NULL #clear old data frame
+  sp.data<-frog_dat %>% filter(ssp==sp.list[n])
+
+#Retain only needed data, and max per point count visit
+sp.data<-sp.data %>% select(occ, callcode_id, site_id, point_id, sample, year) %>% group_by(site_id, point_id, sample, year) %>% summarise(occ=max(occ), maxcode = max(callcode_id))
+
+
+#Following Hohman et al. 2021, the dependent variable was the maximum occupancy in the three breeding-season point counts. Lets create this variable and write to a .csv 
+
+maxocc<-sp.data %>% group_by(site_id, point_id, year)  %>% filter(maxcode==max(maxcode)) %>% select(-sample) %>% distinct()
+
+#Merge with events layer to zero-fill
+maxocc<-left_join(events, maxocc, by=c("site_id", "point_id", "year"))
+
+#Zero fill the 'individuals' column
+  maxocc$occ[is.na(maxocc$occ)] <- 0 
+  maxocc$maxcode[is.na(maxocc$maxcode)] <- 0 
+  maxocc$taxa_code<- sp.list[n]
+  
+#Create the range matrix using the per occ per basin > 10%
+
+sp.range<-master_basin %>% select(region, sp.list[n])
+colnames(sp.range)[colnames(sp.range) == sp.list[n]] <- "per_occ"
+
+sp.range<-sp.range %>% mutate(range=ifelse(per_occ>=5, 1, 0)) %>% select(-per_occ)
+
+#remove out of range observations and zeros
+sp.data<-left_join(maxocc, sp.range, by="region")
+
+#drop range == 0 
+sp.data<-sp.data %>% filter(range>=1) %>% select(-range)
+  
+write.table(sp.data, file = paste(out.dir,"CWMP_MaxOcc.csv", sep=""), row.names = FALSE, append = TRUE, col.names=FALSE, quote = FALSE, sep = ",")  
+
+
+} #end loop
+
+```

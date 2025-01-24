@@ -1,0 +1,92 @@
+---
+title: "Intro"
+author: "DME"
+format: html
+editor: visual
+---
+
+## Coasta Wetland Monitoring Program (CWMP) - Laurentian Great Lakes Basin
+
+To facilitate collaboration and information sharing between public, private, and government agencies throughout the Great Lakes basin, we developed standardized methods and indicators used for assessing wetland condition. Using an ecosystem approach and a stratified random site selection process, birds, anurans, fish, macroinvertebrates, vegetation, and physico-chemical conditions were sampled in coastal wetlands of all five Great Lakes including sites from the United States and Canada. The primary objective of this monitoring program was to implement a standardized standardized basin-wide coastal wetland monitoring program that would be a powerful tool to inform decision-makers on coastal wetland conservation and restoration priorities throughout the Great Lakes basin.
+
+## Anuran Monitoring
+
+The overall goal of the anuran monitoring program was to document the species present at the respective wetlands during the primary frog and toad mating seasons, which vary among species and from year to year depending on weather conditions between March and July. Given the massive area of the Great Lakes coastline, this monitoring program did not attempt to verify breeding productivity of frog and toad species within these wetlands, which would have required intensive searches for eggs or emergence of individuals from the wetland.
+
+Anuran point counts within each wetland were completed three times, when:
+
+1\) Nighttime air temperatures consistently reached 5C, usually in March or April;
+
+2\) Nighttime temperatures consistently reached 10C and at least 15d from the first sample period (generally April or May); and
+
+3\) Nighttime temperatures consistently reached 17C and at least 15d from the second sample period (generally June or July).
+
+Anuran data were gathered using timed, unlimited-distance counts (full circle) at each point. Point surveys were completed from 0.5 h before to 4.5 h after sunset. Counts were not conducted when winds were high (\> 20 km/h) or during rain, although sampling during periods of drizzle or light winds was acceptable, especially if anuran calling was deemed normal.
+
+Each anuran survey was 3 min in duration. Data recorded at each survey point before or immediately after the survey included the following:
+
+1\) point ID with a recording of the GPS waypoint,
+
+2\) date,
+
+3\) start time,
+
+4\) name of observers (for safety reasons we recommend two individuals participate in the counts), and
+
+5\) weather conditions including air temperature, wind speed and direction, precipitation, cloud cover, ambient noise levels, and if possible water temperature.
+
+Data recorded during the survey included:
+
+1\) identified species;
+
+2\) calling intensity (see below) of all frog and toad species,
+
+3\) the nearest distance of each anuran detection in one of three categories (\<50 m, 50-100 m, or \>100 m), and
+
+4\) location of each detection with reference to the observer (semicircle in front of or behind the observer, oriented at a fixed direction facing the wetland).
+
+For safety reasons, we recommend only shore-based and no over-water nighttime surveys. Calling intensity for each species was coded according to three categories: Code 1 described a condition where calls were not simultaneous and individuals of a given species could be counted; Code 2 represented a level of activity where some calling was simultaneous, but numbers of individuals could be reliably estimated; Code 3 described a full chorus with so many continuous and overlapping calls that individuals could not be accurately counted.
+
+## Resources
+
+For more details on sampling, please review Uzerski et al. 2017. Standard measures of Coastal Wetland Condition: Implementation at a Laurentian Great Lakes Basin-Wide Scale. Wetlands. 37: 15-32, which can be found in the `Resource` folder in this project directory. To access the data files needed to complete this analysis please contact Doug Tozer or another member of the CWMP team: dtozer\@birdscanada.org
+
+## Authors
+
+The original R code was created by Danielle Ethier, Senior Scientist with Birds Canada. Modification Date: January 2025
+
+Manuscript Title: Occurrence patterns and trends of frogs in coastal wetlands of the Great Lakes call for further habitat restoration
+
+Manuscript authors: Douglas C. Tozer1\*#, Annie M. Bracey2, Valerie J. Brady2, Michael F. Chislock3, Jan J. H. Ciborowski4, Matthew J. Cooper5, Giuseppe E. Fiorino6, Thomas M. Gehring7, Erin E. Gnass Giese8, Greg P. Grabas6, Anna M. Harrison7, Robert W. Howe8, Gary A. Lamberti9, Gregory J. Lawrence3, Gerald J. Niemi2, Donald G. Uzarski7, Bridget A. Wheelock7, Danielle M. Ethier1#
+
+1	Long Point Waterfowl and Wetlands Research Program, Birds Canada, Port Rowan, Ontario, Canada
+
+2	Natural Resources Research Institute, University of Minnesota Duluth, Duluth, Minnesota, USA
+
+3	Department of Environmental Science and Ecology, SUNY Brockport, Brockport, New York, USA
+
+4	Department of Biological Sciences, University of Calgary, Calgary, Alberta, Canada
+
+5	Department of Biology, Grand Valley State University, Allendale, Michigan, USA
+
+6	Canadian Wildlife Service, Environment and Climate Change Canada, Toronto, Ontario, Canada
+
+7	Institute for Great Lakes Research and Department of Biology, Central Michigan University, Mount Pleasant, Michigan, USA
+
+8	Cofrin Center for Biodiversity, University of Wisconsin – Green Bay, Green Bay, Wisconsin, USA
+
+9	Department of Biological Sciences, University of Notre Dame, Notre Dame, Indiana, USA
+
+\*	Corresponding author: [dtozer\@birdscanada.org](mailto:dtozer@birdscanada.org)
+
+\#	These authors contributed equally to the paper
+
+Journal: Ecosphere (2025)
+
+## Abstract
+
+Countless wetlands have been lost and degraded globally, and amphibians are the most threatened vertebrate class found in these habitats. However, despite facing extensive threats and stressors, coastal wetlands of the Laurentian Great Lakes still support sizable populations of anurans (frogs and toads). We used data from the Great Lakes Coastal Wetland Monitoring Program to quantify the first-ever annual occurrence probabilities and trends (2011–2023) of eight marsh-breeding anurans at 1,550 point count locations in 747 coastal wetlands throughout the Great Lakes, and to assess 11 potential drivers of occurrence. Across our study area, Green Frog (Lithobates clamitans) increased by 8% per year, whereas Chorus Frog (Pseudacris maculata, P. triseriata) decreased by 14% per year. We found more positive or stable trends among lakes and species (85%) than negative trends (15%). Occurrence of all species was negatively associated with one or two indicators of poor water quality: specific conductance, ammonium nitrogen, nitrate nitrogen, and urban and agricultural land cover in the surrounding watershed (median area: 12 km2). Multiple species were positively associated with high lake levels and surrounding wetland (\< 250 m) and forest (\< 2.5 km) land cover, and negatively associated with surrounding road density (\< 2.5 km). Even though most species were increasing or stable and had relatively high occurrences (\> 50%), all will likely benefit from conservation actions. Given 50 to 90% of Great Lakes coastal wetlands have been lost and converted to anthropogenic land uses, means that populations of most frog species must currently be only a fraction of their former, original sizes. Therefore, we should take extra caution to help ensure their growth and persistence. Improving water quality, and increasing natural forest and wetland cover and reducing roads within 2.5 km of Great Lakes coastal wetlands will help conserve these important indicator species in this globally-recognized but imperilled ecosystem.
+
+## Acknowledgements
+
+V. Brady, T. Brown, T. Redder, M. Cooper, D. Uzarski, J. Schneider, K. O’Donnell, and M. Pawlowski in particular, and dozens of past and current collaborators and technicians, have made the CWMP a reality. We thank members of the Scientific Advisory Committee of the Long Point Waterfowl and Wetlands Research Program of Birds Canada for comments that improved the paper, and numerous landowners and Indigenous Nations for access to their lands. D.C.T. and D.M.E. were supported during this work by the Long Point Waterfowl and Wetlands Research Program of Birds Canada, Environment and Climate Change Canada (contract number 3000767152), and Wildlife Habitat Canada (grant number 24-300; primarily from funds generated by the purchase of Canadian Wildlife Habitat Conservation Stamps by waterfowl hunters). This work was funded by the Great Lakes Restoration Initiative as provided by the Great Lakes National Program Office of the United States Environmental Protection Agency (USEPA), grant numbers GL-00E00612-0, 00E01567, and 00E02956. Although the research described in this work has been funded by the USEPA, it has not been subjected to the agency’s required peer and policy review and therefore does not necessarily reflect the views of the agency and no official endorsement should be inferred. This is contribution number XXX of the Central Michigan University Institute for Great Lakes Research.
